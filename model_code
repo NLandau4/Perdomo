@@ -1,0 +1,163 @@
+#Attempting to get model for run saves based on SS with Pitcher=Luis Perdomo
+#Much of the code is trying different techniques and plotting for my own visual reference
+
+require(devtools)
+install_github("BillPetti/baseballr")
+require(baseballr)
+require(dplyr)
+require(ggplot2)
+require(reshape2)
+perdomo <- read.csv("Perdomo Data.csv")
+spray_angle <- ((hc_x-125.42)/(198.27-hc_y)*180/pi*.75)
+perdomo$spray_angle <- ((hc_x-125.42)/(198.27-hc_y)*180/pi*.75)
+
+  
+hc_x <- (perdomo$hc_x)
+hc_y <- (perdomo$hc_y)
+x <- hc_x - 125.42
+y <- 198.27 - hc_y
+p00 <- ggplot(data=perdomo, aes(x=x, y=y))
+P11 <- p00 + geom_point(aes(color=events))
+p11 <- p00 + geom_point(aes(color=events))
+p22 <- p11 + coord_equal()
+p22
+
+#getting basepath dimensions (scaled to size)
+bases <- data.frame(x=c(0, 45/sqrt(2),0, -45/sqrt(2), 0), y=c(0, 45/sqrt(2), 2 * 45/sqrt(2), 45/sqrt(2), 0))
+> p44 <- p22 + geom_path(aes(x=x, y=y), data=bases)
+> p44
+
+#overlaying BIP to Petco Park diagram
+library ("jpeg")
+petco <- readJPEG("petco.jpeg")
+ 
+ggplot(perdomo, aes(x, y)) + coord_equal() + annotation_raster(petco,-100, 95, -15, 127) + stat_binhex(aplpha=.9, binwidth=c(1.5,1.5)) + scale_fill_gradient(low="blue", high="black") 
+
+ggplot(perdomo, aes(x, y)) + coord_equal() + annotation_raster(petco,-100, 95, -15, 127) + stat_binhex(aplpha=.9, binwidth=c(1.5,1.5)) + scale_fill_gradient(low="blue", high="black") + ggtitle("Perdomo BIP Profile at Petco Park")
+
+league <- read.csv("League ss Data.csv")
+
+league$spray_angle <- ((league$hc_x-125.42)/(198.27-league$hc_y))*180/3.14
+subsetleague <- subset(league, spray_angle > -35 & spray_angle < 0)
+install.packages("aod")
+require(aod)
+
+subsetleague$hits <- factor(subsetleague$hits)
+summary(subsetleague$spray_angle, subsetleague$launch_speed)
+
+#Probit model to measure hit probability based on spray angle and launch speed - for entire league
+model <- glm(subsetleague$hits ~ subsetleague$spray_angle + subsetleague$launch_speed + , family = binomial(link="probit"), data = subsetleague)
+summary(model)
+
+#Robustness tests
+confint(model)
+wald.test(b=coef(model), Sigma = vcov(model), L=1 )
+
+#getting hit probabilities for launch speed/spray angle combinations
+newdata <- data.frame(spray_angle = rep(seq(from = -35, to = -0, length.out = 10)), launch_speed = rep(c(80, 90, 95, 100), each = 100 * 4))
+head(newdata)
+
+#generate predicted probabiliity that ball is a hit, given launch speed and spray angle
+newdata[, c("p", "se")] <- predict(model, newdata, type = "response", se.fit = TRUE)[-3]
+
+ggplot(newdata, aes(x = spray_angle, y = p, colour = p)) + geom_line() + facet_wrap(~launch_speed)
+summary(model)
+
+predict(model, newdata, type="response")
+
+plot(model)
+require(ggplot2);ggplot(subsetleague,aes(x=subsetleague$spray_angle,y=subsetleague$launch_speed))+
+  geom_point(position=position_jitter(width=0,height=.04))+   
+  stat_smooth(method='glm',family=binomial(link='probit'))+
+  scale_y_continuous('Launch Speed')+
+  scale_x_continuous('Spray Angle')
+
+p=predict(model, type = "response" )
+install.packages("scatterplot3d")
+library(scatterplot3d)
+scatterplot3d(subsetleague$spray_angle,subsetleague$launch_speed,p,pch=8)
+
+perdomo$spray_angle <- ((perdomo$hc_x-125.42)/(198.27-perdomo$hc_y))*180/3.14
+subsetperdomo <- subset(perdomo, spray_angle > -35 & spray_angle < 0)
+subsetperdomo$hits <- factor(subsetperdomo$events.1)
+
+#probit model for when Perdomo is pitching
+modelP <- glm(subsetperdomo$hits ~ subsetperdomo$launch_speed+subsetperdomo$spray_angle , family = binomial(link="probit"), data = subsetperdomo)
+summary(modelP)
+
+#bootstrapping for low sample size correction
+bs <- function(formula, data, indices) {
+  d <- data[indices,] 
+  fit <- glm(formula, family = binomial(link="logit"), data = subsetperdomo)
+  return(coef(fit)) }
+
+results <- boot( data=subsetperdomo, statistic=bs,R=1000, formula=hits~launch_speed+spray_angle)
+results
+
+#Trying another method for bootstrapping
+set.seed(01)
+nb=1000
+coefmat <- matrix(0, nb, 1)
+resids <- residuals(modelP)
+preds <- fitted(modelP)
+for(i in 1:nb)
+{booty <- preds +sample(resids, replace = TRUE)
+bmod <- update(modelP, booty~.)
+coefmat [i,] <- coef(bmod)}
+
+#re-run bootsrapped model
+modelP <- glm(subsetperdomo$hits ~ subsetperdomo$launch_speed+subsetperdomo$spray_angle , family = binomial(link="probit"), data = subsetperdomo)
+summary(modelP)
+
+coefl <- coef(model)
+coefp <- coef(modelP)
+
+require(ggplot2);ggplot(subsetperdomo,aes(x=subsetperdomo$spray_angle,y=subsetperdomo$launch_speed))+
+  geom_point(position=position_jitter(width=0,height=.04))+   
+  stat_smooth(method='glm',family=binomial(link='probit'))
+
+#Get predicted values for hit probability based on BIP profile
+newdataP <- data.frame(spray_angle = rep(seq(from = -35, to = -0, length.out = 10)), launch_speed = rep(c(80, 90, 95, 100), each = 10 * 3))
+head(newdataP)
+
+newdataP[, c("p", "se")] <- predict(modelP, newdataP, type = "response", se.fit = TRUE)[-3]
+
+ggplot(newdataP, aes(x = spray_angle, y = p, colour = p)) + geom_line() + facet_wrap(~launch_speed)
+summary(modelP)
+
+scatterplot3d(newdataP$spray_angle,newdataP$launch_speed,newdataP$p,pch=8)
+          
+install.packages("sjPlot") 
+inatall.packages("sjmisc")
+install.packages("sjlabelled")
+library(sjPlot)
+library(sjmisc)
+library(sjlabelled)
+set_theme(
+  base = theme_sjplot(),
+  axis.title.size = .85, 
+  axis.textsize = .85, 
+  legend.size = .8, 
+  geom.label.size = 3.5
+)
+sjp.glm(modelP)
+sjp.glm(model)
+
+sjp.glm(modelP, sort.est = FALSE)
+sjp.glm(modelP, type = "slope")
+plot_model(modelP, type = "slope", facet.grid = FALSE, show.ci = TRUE, vars = "barthel")
+
+#Attemped to fit smoothing curve, data does not show useful results.
+new.data <- newdata[1:120,]
+lo <- loess(new.data$p~newdataP$p )
+plot(new.data$p,newdataP$p)
+xl <- seq(min(x),max(x), (max(x) - min(x))/1000)
+lines(xl, predict(lo,xl), col='red', lwd=2)
+
+lfun <- approxfun(lo)
+fitted <- lfun(new.data$p)
+resid <- y-fitted
+plot(fitted,resid)
+abline(h=0,col=8)
+
+
