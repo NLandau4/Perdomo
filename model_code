@@ -24,8 +24,8 @@ p22
 
 #getting basepath dimensions (scaled to size)
 bases <- data.frame(x=c(0, 45/sqrt(2),0, -45/sqrt(2), 0), y=c(0, 45/sqrt(2), 2 * 45/sqrt(2), 45/sqrt(2), 0))
-> p44 <- p22 + geom_path(aes(x=x, y=y), data=bases)
-> p44
+p44 <- p22 + geom_path(aes(x=x, y=y), data=bases)
+p44
 
 #overlaying BIP to Petco Park diagram
 library ("jpeg")
